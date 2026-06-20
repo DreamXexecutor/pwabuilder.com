@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Splitscreen Arcade</title>
+<meta name="description" content="Offline 1-4 player pass-the-phone mini-game arcade.">
+<meta name="theme-color" content="#15151a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  @font-face {
+    font-family: 'fallback-display';
+    src: local('Arial Black');
+  }
+  :root {
+    --bg: #15151a;
+    --bg-soft: #1d1d24;
+    --line: #2a2a33;
+    --ink: #f3f1ea;
+    --ink-dim: #8a8a96;
+    --p1: #ff5c5c;
+    --p2: #4ecdc4;
+    --p3: #ffd23f;
+    --p4: #a78bfa;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: var(--bg); color: var(--ink);
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    overflow: hidden;
+    touch-action: none;
+  }
+  #app { position: fixed; inset: 0; }
+
+  .screen { position: absolute; inset: 0; display: none; }
+  .screen.active { display: block; }
+
+  /* ---------- HUB ---------- */
+  #hub {
+    display: flex; flex-direction: column;
+    height: 100%; padding: 28px 22px 22px;
+  }
+  .hub-title {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: clamp(28px, 8vw, 40px);
+    letter-spacing: -0.01em;
+    line-height: 1;
+    margin: 0;
+  }
+  .hub-title span { display: block; }
+  .hub-title .accent { color: var(--p1); }
+  .hub-sub {
+    color: var(--ink-dim);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 8px 0 0;
+  }
+  .split-rule {
+    margin: 18px 0 20px;
+    height: 6px;
+    border-radius: 3px;
+    display: flex;
+    overflow: hidden;
+  }
+  .split-rule div { flex: 1; }
+  .split-rule div:nth-child(1) { background: var(--p1); }
+  .split-rule div:nth-child(2) { background: var(--p2); }
+  .split-rule div:nth-child(3) { background: var(--p3); }
+  .split-rule div:nth-child(4) { background: var(--p4); }
+
+  .section-label {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin: 18px 0 10px;
+  }
+
+  .player-picker {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .player-btn {
+    background: var(--bg-soft);
+    border: 2px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 0 10px;
+    color: var(--ink);
+    font-family: inherit;
+    text-align: center;
+    cursor: pointer;
+  }
+  .player-btn .num {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: 28px;
+    line-height: 1;
+    display: block;
+  }
+  .player-btn .lbl {
+    font-size: 10px;
+    color: var(--ink-dim);
+    letter-spacing: 0.06em;
+    margin-top: 4px;
+    display: block;
+  }
+  .player-btn.selected {
+    border-color: var(--ink);
+    background: #232329;
+  }
+  .player-btn.selected .num { color: var(--p1); }
+
+  .game-list { flex: 1; overflow-y: auto; margin-top: 8px; padding-bottom: 10px; }
+  .game-card {
+    background: var(--bg-soft);
+    border: 2px solid var(--line);
+    border-radius: 16px;
+    padding: 16px 16px 14px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .game-card:active { border-color: var(--ink); }
+  .game-card .gtitle {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: 19px;
+    margin: 0 0 4px;
+  }
+  .game-card .gdesc {
+    font-size: 12px;
+    color: var(--ink-dim);
+    line-height: 1.5;
+    margin: 0 0 10px;
+  }
+  .gmeta {
+    display: flex; gap: 8px; align-items: center;
+  }
+  .gmeta .tag {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    padding: 3px 9px;
+    color: var(--ink-dim);
+  }
+  .gmeta .tag.ready { color: var(--p2); border-color: var(--p2); }
+  .game-card .stripe {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+  }
+
+  .footnote {
+    text-align: center;
+    font-size: 10.5px;
+    color: var(--ink-dim);
+    padding-top: 6px;
+    line-height: 1.5;
+  }
+
+  /* ---------- TAP BATTLE GAME ---------- */
+  #game-tapbattle { background: #000; }
+  .arena {
+    position: absolute; inset: 0;
+    display: grid;
+  }
+  .zone {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 0;
+  }
+  .zone .fill {
+    position: absolute; inset: 0;
+    transform: scale(0);
+    border-radius: 50%;
+    transition: transform 70ms ease-out;
+    opacity: 0.9;
+  }
+  .zone .content {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    transform: rotate(var(--rot, 0deg));
+  }
+  .zone .pname {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: clamp(14px, 4vw, 18px);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0.85;
+    margin: 0 0 2px;
+  }
+  .zone .pscore {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: clamp(40px, 14vw, 64px);
+    line-height: 1;
+    margin: 0;
+    color: #0a0a0a;
+    text-shadow: none;
+  }
+  .zone .ptap {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(0,0,0,0.55);
+    margin-top: 6px;
+  }
+  .zone.p1 { background: #3a1a1a; }
+  .zone.p2 { background: #1a3433; }
+  .zone.p3 { background: #3a341a; }
+  .zone.p4 { background: #2a223a; }
+
+  .zone[data-active="1"].p1 { background: var(--p1); }
+  .zone[data-active="1"].p2 { background: var(--p2); }
+  .zone[data-active="1"].p3 { background: var(--p3); }
+  .zone[data-active="1"].p4 { background: var(--p4); }
+
+  #hud-top {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px;
+    z-index: 10;
+    pointer-events: none;
+  }
+  #countdown-pill, #timer-pill {
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 100px;
+    pointer-events: auto;
+  }
+  #exit-btn {
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    border: none;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 7px 12px;
+    border-radius: 100px;
+    pointer-events: auto;
+  }
+
+  #countdown-overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.85);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 20;
+    flex-direction: column;
+  }
+  #countdown-num {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: 96px;
+    color: #fff;
+  }
+  #countdown-label {
+    color: var(--ink-dim);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: -10px;
+  }
+
+  #result-overlay {
+    position: absolute; inset: 0;
+    background: rgba(10,10,12,0.96);
+    display: none;
+    z-index: 25;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+  }
+  #result-overlay.show { display: flex; }
+  #result-winner {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: 34px;
+    margin: 0 0 4px;
+  }
+  #result-sub {
+    color: var(--ink-dim);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 22px;
+  }
+  .result-row {
+    width: 100%; max-width: 320px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 14px;
+    border-radius: 10px;
+    margin-bottom: 7px;
+    font-size: 14px;
+  }
+  .result-row .rn { font-weight: bold; }
+  .result-row .rs { font-family: 'Archivo Black', 'Arial Black', sans-serif; }
+  .result-actions {
+    display: flex; gap: 10px; margin-top: 22px;
+  }
+  .result-btn {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: 13px;
+    padding: 12px 20px;
+    border-radius: 12px;
+    border: 2px solid var(--line);
+    background: var(--bg-soft);
+    color: var(--ink);
+  }
+  .result-btn.primary {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ HUB ============ -->
+  <div class="screen active" id="hub">
+    <h1 class="hub-title"><span>SPLITSCREEN</span><span class="accent">ARCADE</span></h1>
+    <p class="hub-sub">Offline · pass-the-phone · 1–4 players</p>
+    <div class="split-rule"><div></div><div></div><div></div><div></div></div>
+
+    <div class="section-label">Players</div>
+    <div class="player-picker" id="player-picker">
+      <button class="player-btn" data-n="1"><span class="num">1</span><span class="lbl">SOLO</span></button>
+      <button class="player-btn" data-n="2"><span class="num">2</span><span class="lbl">PLAYERS</span></button>
+      <button class="player-btn selected" data-n="3"><span class="num">3</span><span class="lbl">PLAYERS</span></button>
+      <button class="player-btn" data-n="4"><span class="num">4</span><span class="lbl">PLAYERS</span></button>
+    </div>
+
+    <div class="section-label">Mini-games</div>
+    <div class="game-list">
+      <div class="game-card" id="card-tapbattle">
+        <div class="stripe" style="background: var(--p1);"></div>
+        <h3 class="gtitle">Tap Turf</h3>
+        <p class="gdesc">Screen splits into one zone per player. Mash your zone fastest for 15 seconds to win. Pure thumb speed.</p>
+        <div class="gmeta"><span class="tag ready">● Ready to play</span></div>
+      </div>
+
+      <div class="game-card" style="opacity:0.5;">
+        <div class="stripe" style="background: var(--p2);"></div>
+        <h3 class="gtitle">Paint Fight</h3>
+        <p class="gdesc">Drag to claim territory in your zone. Most painted area when time runs out wins.</p>
+        <div class="gmeta"><span class="tag">○ Coming next</span></div>
+      </div>
+
+      <div class="game-card" style="opacity:0.5;">
+        <div class="stripe" style="background: var(--p3);"></div>
+        <h3 class="gtitle">Reaction Duel</h3>
+        <p class="gdesc">Wait for the flash, then tap first. False starts cost you the round.</p>
+        <div class="gmeta"><span class="tag">○ Coming next</span></div>
+      </div>
+    </div>
+
+    <p class="footnote">Built as a browser prototype — wrap with Capacitor/Cordova to ship as a real .apk later.</p>
+  </div>
+
+  <!-- ============ TAP BATTLE GAME ============ -->
+  <div class="screen" id="game-tapbattle">
+    <div id="hud-top">
+      <button id="exit-btn">⏏ Exit</button>
+      <div id="timer-pill">15.0</div>
+    </div>
+    <div class="arena" id="arena"></div>
+    <div id="countdown-overlay">
+      <div id="countdown-num">3</div>
+      <div id="countdown-label">Get your thumbs ready</div>
+    </div>
+    <div id="result-overlay">
+      <h2 id="result-winner">PLAYER 1 WINS</h2>
+      <div id="result-sub">15 seconds of chaos, settled</div>
+      <div id="result-rows"></div>
+      <div class="result-actions">
+        <button class="result-btn" id="btn-rematch-menu">Change setup</button>
+        <button class="result-btn primary" id="btn-rematch">Rematch</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const PLAYER_COLORS = {1:'var(--p1)', 2:'var(--p2)', 3:'var(--p3)', 4:'var(--p4)'};
+  const PLAYER_HEX = {1:'#ff5c5c', 2:'#4ecdc4', 3:'#ffd23f', 4:'#a78bfa'};
+  let numPlayers = 3;
+  let scores = {};
+  let active = {};
+  let gameTimer = null;
+  let timeLeft = 15.0;
+  let running = false;
+
+  // ---------- HUB LOGIC ----------
+  const playerBtns = document.querySelectorAll('.player-btn');
+  playerBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      playerBtns.forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      numPlayers = parseInt(btn.dataset.n, 10);
+    });
+  });
+
+  document.getElementById('card-tapbattle').addEventListener('click', () => {
+    startTapBattle();
+  });
+
+  function showScreen(id){
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+
+  // ---------- TAP BATTLE: LAYOUT ----------
+  // Layout per player count: zones arranged so each player's text faces them
+  // 1p: single full-screen zone
+  // 2p: top/bottom split, bottom zone rotated 180deg so player at bottom reads it upright facing them
+  // 3p: top half split in two (rotated 180, facing two players at top edge), bottom half one zone
+  // 4p: 2x2 grid, top two rotated 180
+
+  function buildArena(){
+    const arena = document.getElementById('arena');
+    arena.innerHTML = '';
+    arena.style.gridTemplateColumns = '';
+    arena.style.gridTemplateRows = '';
+
+    let layout; // array of {player, rot, gridArea}
+    if (numPlayers === 1){
+      arena.style.gridTemplateColumns = '1fr';
+      arena.style.gridTemplateRows = '1fr';
+      layout = [{p:1, rot:0}];
+    } else if (numPlayers === 2){
+      arena.style.gridTemplateColumns = '1fr';
+      arena.style.gridTemplateRows = '1fr 1fr';
+      layout = [{p:1, rot:180}, {p:2, rot:0}];
+    } else if (numPlayers === 3){
+      arena.style.gridTemplateColumns = '1fr 1fr';
+      arena.style.gridTemplateRows = '1fr 1fr';
+      // top row: p1, p2 rotated 180 (facing players standing at top)
+      // bottom row: p3 spans both columns
+      layout = [
+        {p:1, rot:180, col:'1', row:'1'},
+        {p:2, rot:180, col:'2', row:'1'},
+        {p:3, rot:0, col:'1 / 3', row:'2'}
+      ];
+    } else {
+      arena.style.gridTemplateColumns = '1fr 1fr';
+      arena.style.gridTemplateRows = '1fr 1fr';
+      layout = [
+        {p:1, rot:180, col:'1', row:'1'},
+        {p:2, rot:180, col:'2', row:'1'},
+        {p:3, rot:0, col:'1', row:'2'},
+        {p:4, rot:0, col:'2', row:'2'}
+      ];
+    }
+
+    layout.forEach(item => {
+      const zone = document.createElement('div');
+      zone.className = `zone p${item.p}`;
+      zone.dataset.player = item.p;
+      if (item.col) zone.style.gridColumn = item.col;
+      if (item.row) zone.style.gridRow = item.row;
+      zone.innerHTML = `
+        <div class="fill"></div>
+        <div class="content" style="--rot:${item.rot}deg">
+          <p class="pname">Player ${item.p}</p>
+          <p class="pscore">0</p>
+          <p class="ptap">TAP HERE</p>
+        </div>
+      `;
+      zone.addEventListener('pointerdown', (e) => onTap(item.p, zone, e));
+      arena.appendChild(zone);
+    });
+  }
+
+  function onTap(p, zone, e){
+    if (!running) return;
+    scores[p] = (scores[p] || 0) + 1;
+    const scoreEl = zone.querySelector('.pscore');
+    scoreEl.textContent = scores[p];
+
+    // flash fill ripple from tap point
+    const fill = zone.querySelector('.fill');
+    fill.style.background = PLAYER_HEX[p];
+    fill.style.transform = 'scale(0)';
+    fill.style.opacity = '0.95';
+    requestAnimationFrame(() => {
+      fill.style.transform = 'scale(2.5)';
+    });
+    setTimeout(() => { fill.style.opacity = '0.9'; }, 70);
+
+    zone.dataset.active = '1';
+    clearTimeout(zone._activeTimeout);
+    zone._activeTimeout = setTimeout(() => { zone.dataset.active = '0'; }, 150);
+
+    // tiny scale punch on score
+    scoreEl.style.transform = 'scale(1.18)';
+    setTimeout(() => { scoreEl.style.transform = 'scale(1)'; scoreEl.style.transition='transform 90ms'; }, 60);
+  }
+
+  function startTapBattle(){
+    showScreen('game-tapbattle');
+    document.getElementById('result-overlay').classList.remove('show');
+    buildArena();
+    scores = {};
+    for (let i=1;i<=numPlayers;i++) scores[i]=0;
+    timeLeft = 15.0;
+    document.getElementById('timer-pill').textContent = '15.0';
+    runCountdown();
+  }
+
+  function runCountdown(){
+    running = false;
+    const overlay = document.getElementById('countdown-overlay');
+    const num = document.getElementById('countdown-num');
+    overlay.style.display = 'flex';
+    let n = 3;
+    num.textContent = n;
+    const iv = setInterval(() => {
+      n--;
+      if (n === 0){
+        num.textContent = 'GO!';
+      } else if (n < 0){
+        clearInterval(iv);
+        overlay.style.display = 'none';
+        beginRound();
+        return;
+      } else {
+        num.textContent = n;
+      }
+    }, 700);
+  }
+
+  function beginRound(){
+    running = true;
+    timeLeft = 15.0;
+    const start = performance.now();
+    function tick(now){
+      const elapsed = (now - start) / 1000;
+      timeLeft = Math.max(0, 15.0 - elapsed);
+      document.getElementById('timer-pill').textContent = timeLeft.toFixed(1);
+      if (timeLeft <= 0){
+        running = false;
+        endRound();
+        return;
+      }
+      gameTimer = requestAnimationFrame(tick);
+    }
+    gameTimer = requestAnimationFrame(tick);
+  }
+
+  function endRound(){
+    cancelAnimationFrame(gameTimer);
+    const ranking = Object.keys(scores)
+      .map(p => ({p: parseInt(p,10), s: scores[p]}))
+      .sort((a,b) => b.s - a.s);
+
+    const top = ranking[0];
+    const tie = ranking.length > 1 && ranking[1].s === top.s;
+
+    const winnerEl = document.getElementById('result-winner');
+    const subEl = document.getElementById('result-sub');
+    if (tie){
+      winnerEl.textContent = "IT'S A TIE";
+      winnerEl.style.color = '#fff';
+      subEl.textContent = 'Nobody out-tapped anybody';
+    } else {
+      winnerEl.textContent = `PLAYER ${top.p} WINS`;
+      winnerEl.style.color = PLAYER_HEX[top.p];
+      subEl.textContent = `${top.s} taps — fastest thumbs on the table`;
+    }
+
+    const rowsEl = document.getElementById('result-rows');
+    rowsEl.innerHTML = '';
+    ranking.forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'result-row';
+      row.style.background = '#1d1d24';
+      row.style.border = `2px solid ${PLAYER_HEX[r.p]}`;
+      row.innerHTML = `<span class="rn" style="color:${PLAYER_HEX[r.p]}">Player ${r.p}</span><span class="rs">${r.s}</span>`;
+      rowsEl.appendChild(row);
+    });
+
+    document.getElementById('result-overlay').classList.add('show');
+  }
+
+  document.getElementById('btn-rematch').addEventListener('click', startTapBattle);
+  document.getElementById('btn-rematch-menu').addEventListener('click', () => showScreen('hub'));
+  document.getElementById('exit-btn').addEventListener('click', () => {
+    running = false;
+    cancelAnimationFrame(gameTimer);
+    showScreen('hub');
+  });
+
+  // prevent pinch-zoom / double-tap zoom interfering with mashing
+  document.addEventListener('touchmove', (e) => { e.preventDefault(); }, {passive:false});
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
